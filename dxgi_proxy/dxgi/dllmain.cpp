@@ -1,11 +1,10 @@
 #include <windows.h>
 #include <stdio.h>
 #include <iostream>
-#include "HostHook.h"
+#include <fstream>
 
-#define SUBHOOK_STATIC
 #define _CRT_SECURE_NO_WARNING
-#include "subhook.h"
+
 
 struct dxgi_dll {
 	HMODULE dll;
@@ -50,7 +49,24 @@ __declspec(naked) void FakePIXGetCaptureState() { _asm { jmp[dxgi.OrignalPIXGetC
 __declspec(naked) void FakeSetAppCompatStringPointer() { _asm { jmp[dxgi.OrignalSetAppCompatStringPointer] } }
 __declspec(naked) void FakeUpdateHMDEmulationStatus() { _asm { jmp[dxgi.OrignalUpdateHMDEmulationStatus] } }
 
-HostHook host_hook;
+typedef int (__stdcall hook_proc)(
+		PCSTR pNodeName,
+		PCSTR pServiceName,
+		const void* pHints,
+		void* ppResult
+	);
+
+INT __stdcall hook_getaddrinfo(
+	PCSTR pNodeName,
+	PCSTR pServiceName,
+	const void* pHints,
+	void* ppResult
+) {
+	auto handle = GetModuleHandle("ws2_32.dll");
+	void* proc = GetProcAddress(handle, "getaddrinfo");
+	std::cout << "Trying to resolve " << pNodeName << "\n";
+	return (static_cast<hook_proc*>(proc))("127.0.0.1", pServiceName, pHints, ppResult);
+}
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
 	char path[MAX_PATH];
@@ -73,7 +89,18 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 		freopen_s(&fDummy, "CONOUT$", "w", stderr);
 		freopen_s(&fDummy, "CONOUT$", "w", stdout);
 
-		std::cout << "Proxy loaded" << std::endl;
+		std::ifstream file;
+		file.open("hook_host");
+		if (file) {
+			DWORD placeholder;
+			VirtualProtect((void*)0x008F85A4, 4, PAGE_READWRITE, &placeholder);
+			*(DWORD*)(0x008F85A4) = (DWORD)&hook_getaddrinfo;
+			std::cout << "Proxy loaded" << std::endl;
+		}
+		else {
+			std::cout << "Console loaded only\n";
+		}
+		
 
 		dxgi.OrignalApplyCompatResolutionQuirking = GetProcAddress(dxgi.dll, "ApplyCompatResolutionQuirking");
 		dxgi.OrignalCompatString = GetProcAddress(dxgi.dll, "CompatString");
