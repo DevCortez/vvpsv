@@ -1,5 +1,11 @@
 #include <windows.h>
-#include "pch.h"
+#include <stdio.h>
+#include <iostream>
+#include "HostHook.h"
+
+#define SUBHOOK_STATIC
+#define _CRT_SECURE_NO_WARNING
+#include "subhook.h"
 
 struct dxgi_dll {
 	HMODULE dll;
@@ -44,6 +50,8 @@ __declspec(naked) void FakePIXGetCaptureState() { _asm { jmp[dxgi.OrignalPIXGetC
 __declspec(naked) void FakeSetAppCompatStringPointer() { _asm { jmp[dxgi.OrignalSetAppCompatStringPointer] } }
 __declspec(naked) void FakeUpdateHMDEmulationStatus() { _asm { jmp[dxgi.OrignalUpdateHMDEmulationStatus] } }
 
+HostHook host_hook;
+
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
 	char path[MAX_PATH];
 	switch (ul_reason_for_call)
@@ -59,7 +67,13 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 			ExitProcess(0);
 		}
 
-		MessageBoxA(0, "Hooked", "Ok", 0);
+		AllocConsole();
+		FILE *fDummy;
+		freopen_s(&fDummy, "CONIN$", "r", stdin);
+		freopen_s(&fDummy, "CONOUT$", "w", stderr);
+		freopen_s(&fDummy, "CONOUT$", "w", stdout);
+
+		std::cout << "Proxy loaded" << std::endl;
 
 		dxgi.OrignalApplyCompatResolutionQuirking = GetProcAddress(dxgi.dll, "ApplyCompatResolutionQuirking");
 		dxgi.OrignalCompatString = GetProcAddress(dxgi.dll, "CompatString");
